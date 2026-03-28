@@ -1,0 +1,5 @@
+# Home plugin default configuration
+# Homes and warps are written automatically by the plugin.
+
+homes: {}
+warps: {}
