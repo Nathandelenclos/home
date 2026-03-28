@@ -1,0 +1,26 @@
+# Maven build output
+/target/
+
+# IntelliJ IDEA
+/.idea/
+*.iml
+
+# VS Code
+/.vscode/
+
+# OS files
+.DS_Store
+
+# Logs
+*.log
+
+# Java bytecode
+*.class
+
+# Package artifacts
+*.jar
+*.war
+*.ear
+
+# Maven metadata and wrappers cache
+.mvn/timing.properties
