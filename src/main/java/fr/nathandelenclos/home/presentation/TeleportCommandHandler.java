@@ -3,8 +3,6 @@ package fr.nathandelenclos.home.presentation;
 import fr.nathandelenclos.home.application.HomeService;
 import fr.nathandelenclos.home.application.TpaService;
 import fr.nathandelenclos.home.application.WarpService;
-import fr.nathandelenclos.home.domain.TeleportName;
-import fr.nathandelenclos.home.domain.TeleportPoint;
 import fr.nathandelenclos.home.infrastructure.BukkitLocationMapper;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -18,7 +16,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Function;
 
 public final class TeleportCommandHandler implements TabExecutor {
 
@@ -33,19 +30,13 @@ public final class TeleportCommandHandler implements TabExecutor {
     }
 
     @FunctionalInterface
-    private interface GuardedAction {
+    private interface ValidatedAction {
         boolean execute();
     }
 
-    @FunctionalInterface
-    private interface TeleportPointLookup {
-        Optional<TeleportPoint> find(String rawName);
-    }
-
-    private final HomeService homeService;
-    private final WarpService warpService;
-    private final TpaService tpaService;
-    private final BukkitLocationMapper locationMapper;
+    private final HomeTeleportCommands homeCommands;
+    private final WarpTeleportCommands warpCommands;
+    private final TpaTeleportCommands tpaCommands;
     private final Map<String, CommandAction> commandRouter;
 
     public TeleportCommandHandler(
@@ -54,10 +45,9 @@ public final class TeleportCommandHandler implements TabExecutor {
             TpaService tpaService,
             BukkitLocationMapper locationMapper
     ) {
-        this.homeService = homeService;
-        this.warpService = warpService;
-        this.tpaService = tpaService;
-        this.locationMapper = locationMapper;
+        this.homeCommands = new HomeTeleportCommands(homeService, locationMapper);
+        this.warpCommands = new WarpTeleportCommands(warpService, locationMapper);
+        this.tpaCommands = new TpaTeleportCommands(tpaService);
         this.commandRouter = buildRouter();
     }
 
@@ -107,7 +97,7 @@ public final class TeleportCommandHandler implements TabExecutor {
         return action.execute(maybePlayer.get(), args);
     }
 
-    private boolean withInvalidNameGuard(Player player, GuardedAction action) {
+    private boolean withInvalidNameGuard(Player player, ValidatedAction action) {
         try {
             return action.execute();
         } catch (IllegalArgumentException ex) {
@@ -116,17 +106,9 @@ public final class TeleportCommandHandler implements TabExecutor {
         }
     }
 
-    private String normalized(String rawName) {
-        return TeleportName.fromRaw(rawName).value();
-    }
-
     private boolean handleSetHome(CommandSender sender, String[] args) {
-        return withPlayerAndExactArgs(sender, args, 1, (player, actualArgs) -> withInvalidNameGuard(player, () -> {
-            TeleportPoint point = locationMapper.toDomain(player.getLocation());
-            String homeName = homeService.setHome(player.getUniqueId(), actualArgs[0], point);
-            player.sendMessage(CommandMessages.homeSaved(homeName));
-            return true;
-        }));
+        return withPlayerAndExactArgs(sender, args, 1,
+                (player, actualArgs) -> withInvalidNameGuard(player, () -> homeCommands.setHome(player, actualArgs[0])));
     }
 
     private boolean handleHome(CommandSender sender, String[] args) {
@@ -135,197 +117,43 @@ public final class TeleportCommandHandler implements TabExecutor {
             return true;
         }
         Player player = maybePlayer.get();
-
-        if (args.length == 0) {
-            List<String> homes = homeService.listHomes(player.getUniqueId());
-            if (homes.isEmpty()) {
-                player.sendMessage(CommandMessages.HOMES_EMPTY);
-                return true;
-            }
-            player.sendMessage(CommandMessages.homesList(String.join(", ", homes)));
-            return true;
-        }
-
-        if (args.length != 1) {
-            return false;
-        }
-
-        return withInvalidNameGuard(player, () -> executeTeleport(
-                player,
-                args[0],
-                rawName -> homeService.findHome(player.getUniqueId(), rawName),
-                CommandMessages::homeNotFound,
-                CommandMessages.HOME_WORLD_MISSING,
-                CommandMessages::homeTeleported
-        ));
+        return withInvalidNameGuard(player, () -> homeCommands.home(player, args));
     }
 
     private boolean handleSetWarp(CommandSender sender, String[] args) {
-        return withPlayerAndExactArgs(sender, args, 1, (player, actualArgs) -> withInvalidNameGuard(player, () -> {
-            TeleportPoint point = locationMapper.toDomain(player.getLocation());
-            String warpName = warpService.setWarp(actualArgs[0], point);
-            player.sendMessage(CommandMessages.warpSaved(warpName));
-            return true;
-        }));
+        return withPlayerAndExactArgs(sender, args, 1,
+                (player, actualArgs) -> withInvalidNameGuard(player, () -> warpCommands.setWarp(player, actualArgs[0])));
     }
 
     private boolean handleDelHome(CommandSender sender, String[] args) {
-        return withPlayerAndExactArgs(sender, args, 1, (player, actualArgs) -> withInvalidNameGuard(player, () -> {
-            boolean deleted = homeService.deleteHome(player.getUniqueId(), actualArgs[0]);
-            if (!deleted) {
-                player.sendMessage(CommandMessages.homeNotFound(actualArgs[0]));
-                return true;
-            }
-            player.sendMessage(CommandMessages.homeDeleted(normalized(actualArgs[0])));
-            return true;
-        }));
+        return withPlayerAndExactArgs(sender, args, 1,
+                (player, actualArgs) -> withInvalidNameGuard(player, () -> homeCommands.deleteHome(player, actualArgs[0])));
     }
 
     private boolean handleWarp(CommandSender sender, String[] args) {
-        return withPlayerAndExactArgs(sender, args, 1, (player, actualArgs) -> withInvalidNameGuard(player, () -> {
-            return executeTeleport(
-                    player,
-                    actualArgs[0],
-                    warpService::findWarp,
-                    CommandMessages::warpNotFound,
-                    CommandMessages.WARP_WORLD_MISSING,
-                    CommandMessages::warpTeleported
-            );
-        }));
+        return withPlayerAndExactArgs(sender, args, 1,
+                (player, actualArgs) -> withInvalidNameGuard(player, () -> warpCommands.warp(player, actualArgs[0])));
     }
 
     private boolean handleWarps(CommandSender sender, String[] args) {
-        if (args.length != 0) {
-            return false;
-        }
-        List<String> warps = warpService.listWarps();
-        if (warps.isEmpty()) {
-            sender.sendMessage(CommandMessages.WARPS_EMPTY);
-            return true;
-        }
-
-        sender.sendMessage(CommandMessages.warpsList(String.join(", ", warps)));
-        return true;
+        return warpCommands.warps(sender, args);
     }
 
     private boolean handleDelWarp(CommandSender sender, String[] args) {
-        return withPlayerAndExactArgs(sender, args, 1, (player, actualArgs) -> withInvalidNameGuard(player, () -> {
-            boolean deleted = warpService.deleteWarp(actualArgs[0]);
-            if (!deleted) {
-                player.sendMessage(CommandMessages.warpNotFound(actualArgs[0]));
-                return true;
-            }
-            player.sendMessage(CommandMessages.warpDeleted(normalized(actualArgs[0])));
-            return true;
-        }));
+        return withPlayerAndExactArgs(sender, args, 1,
+                (player, actualArgs) -> withInvalidNameGuard(player, () -> warpCommands.deleteWarp(player, actualArgs[0])));
     }
 
     private boolean handleTpa(CommandSender sender, String[] args) {
-        return withPlayerAndExactArgs(sender, args, 1, (requester, actualArgs) -> {
-            Player target = requester.getServer().getPlayerExact(actualArgs[0]);
-            if (target == null) {
-                requester.sendMessage(CommandMessages.playerNotFound(actualArgs[0]));
-                return true;
-            }
-
-            TpaService.RequestStatus status = tpaService.createRequest(
-                    requester.getUniqueId(),
-                    target.getUniqueId(),
-                    System.currentTimeMillis()
-            );
-            if (status == TpaService.RequestStatus.SELF_REQUEST) {
-                requester.sendMessage(CommandMessages.TPA_SELF);
-                return true;
-            }
-
-            requester.sendMessage(CommandMessages.tpaSent(target.getName()));
-            target.sendMessage(CommandMessages.tpaReceived(requester.getName()));
-            return true;
-        });
+        return withPlayerAndExactArgs(sender, args, 1, (requester, actualArgs) -> tpaCommands.tpa(requester, actualArgs[0]));
     }
 
     private boolean handleTpAccept(CommandSender sender, String[] args) {
-        return withPlayerAndExactArgs(sender, args, 0, (target, actualArgs) -> {
-            TpaService.DecisionResult result = tpaService.acceptRequest(target.getUniqueId(), System.currentTimeMillis());
-            if (result.status() == TpaService.DecisionStatus.NO_PENDING) {
-                target.sendMessage(CommandMessages.TPA_NO_PENDING);
-                return true;
-            }
-
-            if (result.status() == TpaService.DecisionStatus.EXPIRED) {
-                target.sendMessage(CommandMessages.TPA_EXPIRED);
-                Player requester = target.getServer().getPlayer(result.requesterId());
-                if (requester != null) {
-                    requester.sendMessage(CommandMessages.TPA_REQUEST_EXPIRED_FOR_REQUESTER);
-                }
-                return true;
-            }
-
-            Player requester = target.getServer().getPlayer(result.requesterId());
-            if (requester == null) {
-                target.sendMessage(CommandMessages.playerNotFound("demandeur"));
-                return true;
-            }
-
-            requester.teleport(target.getLocation());
-            target.sendMessage(CommandMessages.tpaAcceptedTarget(requester.getName()));
-            requester.sendMessage(CommandMessages.tpaAcceptedRequester(target.getName()));
-            return true;
-        });
+        return withPlayerAndExactArgs(sender, args, 0, (target, actualArgs) -> tpaCommands.accept(target));
     }
 
     private boolean handleTpDeny(CommandSender sender, String[] args) {
-        return withPlayerAndExactArgs(sender, args, 0, (target, actualArgs) -> {
-            TpaService.DecisionResult result = tpaService.denyRequest(target.getUniqueId(), System.currentTimeMillis());
-            if (result.status() == TpaService.DecisionStatus.NO_PENDING) {
-                target.sendMessage(CommandMessages.TPA_NO_PENDING);
-                return true;
-            }
-
-            if (result.status() == TpaService.DecisionStatus.EXPIRED) {
-                target.sendMessage(CommandMessages.TPA_EXPIRED);
-                Player requester = target.getServer().getPlayer(result.requesterId());
-                if (requester != null) {
-                    requester.sendMessage(CommandMessages.TPA_REQUEST_EXPIRED_FOR_REQUESTER);
-                }
-                return true;
-            }
-
-            Player requester = target.getServer().getPlayer(result.requesterId());
-            if (requester != null) {
-                requester.sendMessage(CommandMessages.tpaDeniedRequester(target.getName()));
-                target.sendMessage(CommandMessages.tpaDeniedTarget(requester.getName()));
-            } else {
-                target.sendMessage(CommandMessages.playerNotFound("demandeur"));
-            }
-            return true;
-        });
-    }
-
-    private boolean executeTeleport(
-            Player player,
-            String rawName,
-            TeleportPointLookup lookup,
-            Function<String, String> notFoundMessage,
-            String worldMissingMessage,
-            Function<String, String> successMessage
-    ) {
-        Optional<TeleportPoint> maybePoint = lookup.find(rawName);
-        if (maybePoint.isEmpty()) {
-            player.sendMessage(notFoundMessage.apply(rawName));
-            return true;
-        }
-
-        Optional<org.bukkit.Location> maybeLocation = locationMapper.toBukkit(maybePoint.get());
-        if (maybeLocation.isEmpty()) {
-            player.sendMessage(worldMissingMessage);
-            return true;
-        }
-
-        String normalizedName = normalized(rawName);
-        player.teleport(maybeLocation.get());
-        player.sendMessage(successMessage.apply(normalizedName));
-        return true;
+        return withPlayerAndExactArgs(sender, args, 0, (target, actualArgs) -> tpaCommands.deny(target));
     }
 
     private List<String> filterByPrefix(List<String> candidates, String partial) {
@@ -349,16 +177,11 @@ public final class TeleportCommandHandler implements TabExecutor {
         List<String> candidates;
 
         if (("home".equals(commandName) || "delhome".equals(commandName)) && sender instanceof Player player) {
-            candidates = homeService.listHomes(player.getUniqueId());
+            candidates = homeCommands.completions(player);
         } else if ("warp".equals(commandName) || "delwarp".equals(commandName)) {
-            candidates = warpService.listWarps();
+            candidates = warpCommands.completions();
         } else if ("tpa".equals(commandName) && sender instanceof Player player) {
-            candidates = new ArrayList<>();
-            for (Player online : player.getServer().getOnlinePlayers()) {
-                if (!online.getUniqueId().equals(player.getUniqueId())) {
-                    candidates.add(online.getName());
-                }
-            }
+            candidates = tpaCommands.completions(player);
         } else {
             return Collections.emptyList();
         }
