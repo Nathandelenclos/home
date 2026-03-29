@@ -1,10 +1,12 @@
 package fr.nathandelenclos.home;
 
+import fr.nathandelenclos.home.application.ChatService;
 import fr.nathandelenclos.home.application.HomeService;
 import fr.nathandelenclos.home.application.TpaService;
 import fr.nathandelenclos.home.application.WarpService;
 import fr.nathandelenclos.home.domain.TeleportPoint;
 import fr.nathandelenclos.home.infrastructure.BukkitLocationMapper;
+import fr.nathandelenclos.home.infrastructure.InMemoryChatStateRepository;
 import fr.nathandelenclos.home.infrastructure.InMemoryTpaRequestRepository;
 import fr.nathandelenclos.home.infrastructure.YamlTeleportRepository;
 import fr.nathandelenclos.home.presentation.ChatFeatureHandler;
@@ -50,7 +52,7 @@ public final class Home extends JavaPlugin {
         ConfigurationSerialization.registerClass(TeleportPoint.class);
 
         commandHandler = createTeleportCommandHandler();
-        chatHandler = new ChatFeatureHandler(this);
+        chatHandler = createChatHandler();
 
         registerAllCommands();
         getServer().getPluginManager().registerEvents(chatHandler, this);
@@ -64,6 +66,11 @@ public final class Home extends JavaPlugin {
         TpaService tpaService = new TpaService(new InMemoryTpaRequestRepository());
         BukkitLocationMapper locationMapper = new BukkitLocationMapper();
         return new TeleportCommandHandler(homeService, warpService, tpaService, locationMapper);
+    }
+
+    private ChatFeatureHandler createChatHandler() {
+        ChatService chatService = new ChatService(new InMemoryChatStateRepository());
+        return new ChatFeatureHandler(this, chatService);
     }
 
     private void registerAllCommands() {

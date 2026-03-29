@@ -1,5 +1,6 @@
 package fr.nathandelenclos.home.presentation;
 
+import fr.nathandelenclos.home.application.ChatService;
 import net.md_5.bungee.api.chat.BaseComponent;
 import net.md_5.bungee.api.chat.ClickEvent;
 import net.md_5.bungee.api.chat.ComponentBuilder;
@@ -21,26 +22,21 @@ import org.bukkit.plugin.Plugin;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.Optional;
 import java.util.UUID;
 
 public final class ChatFeatureHandler implements Listener, TabExecutor {
 
-    private static final Set<String> ALLOWED_REACTIONS = Set.of("gg", "lol", "+1", "rip", "fire");
-
     private final Plugin plugin;
+    private final ChatService chatService;
     private final ChatRenderer renderer;
     private final PlayerCardGui playerCardGui;
-    private final Map<UUID, UUID> lastPrivateContactByPlayer = new HashMap<>();
 
-    private volatile UUID lastPublicMessageSender;
-
-    public ChatFeatureHandler(Plugin plugin) {
+    public ChatFeatureHandler(Plugin plugin, ChatService chatService) {
         this.plugin = plugin;
+        this.chatService = chatService;
         this.renderer = new ChatRenderer();
         this.playerCardGui = new PlayerCardGui();
     }
@@ -68,7 +64,7 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
                 mentioned.playSound(mentioned.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.4f);
             }
 
-            lastPublicMessageSender = sender.getUniqueId();
+            chatService.registerPublicMessageSender(sender.getUniqueId());
         });
     }
 
@@ -104,7 +100,7 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
             return filterByPrefix(onlinePlayerNamesExcluding(sender), args[0]);
         }
         if ("react".equals(name) && args.length == 1) {
-            return filterByPrefix(new ArrayList<>(ALLOWED_REACTIONS), args[0]);
+            return filterByPrefix(new ArrayList<>(chatService.allowedReactions()), args[0]);
         }
         if ("react".equals(name) && args.length == 2) {
             return filterByPrefix(onlinePlayerNamesExcluding(sender), args[1]);
@@ -118,7 +114,7 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
 
     private boolean handleMsg(CommandSender sender, String[] args) {
         if (!(sender instanceof Player from)) {
-            sender.sendMessage(org.bukkit.ChatColor.RED + "Commande reservee aux joueurs.");
+            sender.sendMessage(ChatCommandMessages.PLAYER_ONLY);
             return true;
         }
         if (args.length < 2) {
@@ -127,11 +123,11 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
 
         Player to = Bukkit.getPlayerExact(args[0]);
         if (to == null) {
-            from.sendMessage(org.bukkit.ChatColor.RED + "Joueur introuvable: " + args[0]);
+            from.sendMessage(ChatCommandMessages.playerNotFound(args[0]));
             return true;
         }
         if (from.getUniqueId().equals(to.getUniqueId())) {
-            from.sendMessage(org.bukkit.ChatColor.RED + "Tu ne peux pas t'envoyer un message a toi-meme.");
+            from.sendMessage(ChatCommandMessages.selfMessageForbidden());
             return true;
         }
 
@@ -141,29 +137,28 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
         from.spigot().sendMessage(renderer.buildPrivateMessage(true, from, to, formatted));
         to.spigot().sendMessage(renderer.buildPrivateMessage(false, from, to, formatted));
 
-        lastPrivateContactByPlayer.put(from.getUniqueId(), to.getUniqueId());
-        lastPrivateContactByPlayer.put(to.getUniqueId(), from.getUniqueId());
+        chatService.registerPrivateConversation(from.getUniqueId(), to.getUniqueId());
         return true;
     }
 
     private boolean handleReply(CommandSender sender, String[] args) {
         if (!(sender instanceof Player from)) {
-            sender.sendMessage(org.bukkit.ChatColor.RED + "Commande reservee aux joueurs.");
+            sender.sendMessage(ChatCommandMessages.PLAYER_ONLY);
             return true;
         }
         if (args.length < 1) {
             return false;
         }
 
-        UUID targetId = lastPrivateContactByPlayer.get(from.getUniqueId());
-        if (targetId == null) {
-            from.sendMessage(org.bukkit.ChatColor.YELLOW + "Aucun dernier contact pour repondre.");
+        Optional<UUID> maybeTargetId = chatService.replyTargetFor(from.getUniqueId());
+        if (maybeTargetId.isEmpty()) {
+            from.sendMessage(ChatCommandMessages.NO_REPLY_TARGET);
             return true;
         }
 
-        Player to = Bukkit.getPlayer(targetId);
+        Player to = Bukkit.getPlayer(maybeTargetId.get());
         if (to == null) {
-            from.sendMessage(org.bukkit.ChatColor.RED + "Ton dernier contact n'est plus en ligne.");
+            from.sendMessage(ChatCommandMessages.REPLY_TARGET_OFFLINE);
             return true;
         }
 
@@ -173,24 +168,22 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
         from.spigot().sendMessage(renderer.buildPrivateMessage(true, from, to, formatted));
         to.spigot().sendMessage(renderer.buildPrivateMessage(false, from, to, formatted));
 
-        lastPrivateContactByPlayer.put(from.getUniqueId(), to.getUniqueId());
-        lastPrivateContactByPlayer.put(to.getUniqueId(), from.getUniqueId());
+        chatService.registerPrivateConversation(from.getUniqueId(), to.getUniqueId());
         return true;
     }
 
     private boolean handleReact(CommandSender sender, String[] args) {
         if (!(sender instanceof Player from)) {
-            sender.sendMessage(org.bukkit.ChatColor.RED + "Commande reservee aux joueurs.");
+            sender.sendMessage(ChatCommandMessages.PLAYER_ONLY);
             return true;
         }
         if (args.length < 1 || args.length > 2) {
             return false;
         }
 
-        String reaction = args[0].toLowerCase(Locale.ROOT);
-        if (!ALLOWED_REACTIONS.contains(reaction)) {
-            from.sendMessage(org.bukkit.ChatColor.RED
-                    + "Reaction invalide. Disponibles: " + String.join(", ", ALLOWED_REACTIONS));
+        String reaction = chatService.normalizeReaction(args[0]);
+        if (!chatService.isAllowedReaction(reaction)) {
+            from.sendMessage(ChatCommandMessages.invalidReaction(chatService.allowedReactions()));
             return true;
         }
 
@@ -198,25 +191,24 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
         if (args.length == 2) {
             target = Bukkit.getPlayerExact(args[1]);
             if (target == null) {
-                from.sendMessage(org.bukkit.ChatColor.RED + "Joueur introuvable: " + args[1]);
+                from.sendMessage(ChatCommandMessages.playerNotFound(args[1]));
                 return true;
             }
         } else {
-            if (lastPublicMessageSender == null) {
-                from.sendMessage(org.bukkit.ChatColor.YELLOW + "Aucun message recent pour reagir.");
+            Optional<UUID> maybeTargetId = chatService.lastPublicMessageSender();
+            if (maybeTargetId.isEmpty()) {
+                from.sendMessage(ChatCommandMessages.NO_RECENT_PUBLIC_MESSAGE);
                 return true;
             }
-            target = Bukkit.getPlayer(lastPublicMessageSender);
+            target = Bukkit.getPlayer(maybeTargetId.get());
             if (target == null) {
-                from.sendMessage(org.bukkit.ChatColor.YELLOW + "Le joueur cible n'est plus en ligne.");
+                from.sendMessage(ChatCommandMessages.REACTION_TARGET_OFFLINE);
                 return true;
             }
         }
 
         String displayReaction = "fire".equals(reaction) ? "FIRE" : reaction.toUpperCase(Locale.ROOT);
-        TextComponent msg = new TextComponent(org.bukkit.ChatColor.GOLD + "[Reaction] " + org.bukkit.ChatColor.YELLOW + from.getName()
-                + org.bukkit.ChatColor.WHITE + " -> " + org.bukkit.ChatColor.AQUA + target.getName()
-                + org.bukkit.ChatColor.WHITE + " : " + org.bukkit.ChatColor.GOLD + displayReaction);
+        TextComponent msg = new TextComponent(ChatCommandMessages.reactionBroadcast(from.getName(), target.getName(), displayReaction));
 
         for (Player online : Bukkit.getOnlinePlayers()) {
             online.spigot().sendMessage(msg);
@@ -226,7 +218,7 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
 
     private boolean handlePlayerCard(CommandSender sender, String[] args) {
         if (!(sender instanceof Player viewer)) {
-            sender.sendMessage(org.bukkit.ChatColor.RED + "Commande reservee aux joueurs.");
+            sender.sendMessage(ChatCommandMessages.PLAYER_ONLY);
             return true;
         }
         if (args.length != 1) {
@@ -235,7 +227,7 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
 
         Player target = Bukkit.getPlayerExact(args[0]);
         if (target == null) {
-            viewer.sendMessage(org.bukkit.ChatColor.RED + "Joueur introuvable: " + args[0]);
+            viewer.sendMessage(ChatCommandMessages.playerNotFound(args[0]));
             return true;
         }
 
@@ -245,7 +237,7 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
 
     private boolean handleShareCoord(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage(org.bukkit.ChatColor.RED + "Commande reservee aux joueurs.");
+            sender.sendMessage(ChatCommandMessages.PLAYER_ONLY);
             return true;
         }
         if (args.length != 0) {
@@ -258,17 +250,11 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
         int z = player.getLocation().getBlockZ();
 
         String clickCommand = "/coordtpall " + world + " " + x + " " + y + " " + z;
-        TextComponent line = new TextComponent(
-                org.bukkit.ChatColor.GOLD + "[Coord] "
-                        + org.bukkit.ChatColor.AQUA + player.getName()
-                        + org.bukkit.ChatColor.WHITE + " a partage: "
-                        + org.bukkit.ChatColor.YELLOW + world + " " + x + " " + y + " " + z
-                        + org.bukkit.ChatColor.GREEN + " (cliquer pour te teleporter)"
-        );
+        TextComponent line = new TextComponent(ChatCommandMessages.sharedCoordinatesLine(player.getName(), world, x, y, z));
         line.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, clickCommand));
         line.setHoverEvent(new HoverEvent(
                 HoverEvent.Action.SHOW_TEXT,
-                new ComponentBuilder("Clique pour te teleporter a ces coordonnees")
+            new ComponentBuilder(ChatCommandMessages.SHARED_COORDINATES_HOVER)
                         .color(net.md_5.bungee.api.ChatColor.GRAY)
                         .create()
         ));
@@ -281,7 +267,7 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
 
     private boolean handleCoordTpAll(CommandSender sender, String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage(org.bukkit.ChatColor.RED + "Commande reservee aux joueurs.");
+            sender.sendMessage(ChatCommandMessages.PLAYER_ONLY);
             return true;
         }
         if (args.length != 4) {
@@ -291,7 +277,7 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
         String worldName = args[0];
         org.bukkit.World world = Bukkit.getWorld(worldName);
         if (world == null) {
-            player.sendMessage(org.bukkit.ChatColor.RED + "Monde introuvable: " + worldName);
+            player.sendMessage(ChatCommandMessages.worldNotFound(worldName));
             return true;
         }
 
@@ -303,13 +289,13 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
             y = Integer.parseInt(args[2]);
             z = Integer.parseInt(args[3]);
         } catch (NumberFormatException ex) {
-            player.sendMessage(org.bukkit.ChatColor.RED + "Coordonnees invalides.");
+            player.sendMessage(ChatCommandMessages.INVALID_COORDINATES);
             return true;
         }
 
         org.bukkit.Location destination = new org.bukkit.Location(world, x + 0.5, y, z + 0.5);
         player.teleport(destination);
-        player.sendMessage(org.bukkit.ChatColor.GREEN + "Teleportation vers " + worldName + " " + x + " " + y + " " + z + ".");
+        player.sendMessage(ChatCommandMessages.teleportedToCoordinates(worldName, x, y, z));
         return true;
     }
 

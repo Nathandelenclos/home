@@ -18,6 +18,12 @@ final class ChatRenderer {
 
     private static final DateTimeFormatter HOUR_MINUTE = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter HOUR_MINUTE_SECOND = DateTimeFormatter.ofPattern("HH:mm:ss");
+    private static final String PUBLIC_TIME_TEMPLATE = "[%s] ";
+    private static final String NAME_HOVER_TEMPLATE = "Heure exacte: %s\\nClic gauche: pre-remplir /msg\\nProfil: /playercard %s";
+    private static final String NAME_CLICK_COMMAND_TEMPLATE = "/msg %s ";
+    private static final String PUBLIC_MESSAGE_SEPARATOR = ": ";
+    private static final String PRIVATE_OUTGOING_PREFIX_TEMPLATE = "[MP -> %s] ";
+    private static final String PRIVATE_INCOMING_PREFIX_TEMPLATE = "[MP <- %s] ";
 
     String formatMarkdownLike(String input) {
         String output = input;
@@ -49,21 +55,21 @@ final class ChatRenderer {
         String nowShort = LocalTime.now().format(HOUR_MINUTE);
         String nowLong = LocalTime.now().format(HOUR_MINUTE_SECOND);
 
-        builder.append("[" + nowShort + "] ").color(ChatColor.DARK_GRAY);
+        builder.append(PUBLIC_TIME_TEMPLATE.formatted(nowShort)).color(ChatColor.DARK_GRAY);
 
         TextComponent name = new TextComponent(sender.getName());
         name.setColor(ChatColor.AQUA);
         name.setBold(true);
         name.setHoverEvent(new HoverEvent(
                 HoverEvent.Action.SHOW_TEXT,
-                new ComponentBuilder("Heure exacte: " + nowLong + "\\nClic gauche: pre-remplir /msg\\nProfil: /playercard " + sender.getName())
+            new ComponentBuilder(NAME_HOVER_TEMPLATE.formatted(nowLong, sender.getName()))
                         .color(ChatColor.GRAY)
                         .create()
         ));
-        name.setClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, "/msg " + sender.getName() + " "));
+        name.setClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND, NAME_CLICK_COMMAND_TEMPLATE.formatted(sender.getName())));
         builder.append(name).append(" ");
 
-        builder.append(": ").color(ChatColor.WHITE);
+        builder.append(PUBLIC_MESSAGE_SEPARATOR).color(ChatColor.WHITE);
         for (BaseComponent part : TextComponent.fromLegacyText(highlightMentions(formattedBody))) {
             builder.append(part);
         }
@@ -72,7 +78,9 @@ final class ChatRenderer {
     }
 
     BaseComponent[] buildPrivateMessage(boolean outgoing, Player from, Player to, String formattedBody) {
-        String prefix = outgoing ? "[MP -> " + to.getName() + "] " : "[MP <- " + from.getName() + "] ";
+        String prefix = outgoing
+                ? PRIVATE_OUTGOING_PREFIX_TEMPLATE.formatted(to.getName())
+                : PRIVATE_INCOMING_PREFIX_TEMPLATE.formatted(from.getName());
         ComponentBuilder builder = new ComponentBuilder(prefix).color(ChatColor.LIGHT_PURPLE);
         for (BaseComponent part : TextComponent.fromLegacyText(highlightMentions(formattedBody))) {
             builder.append(part);
