@@ -25,3 +25,12 @@ commands:
   warps:
     description: Affiche la liste des warps
     usage: /warps
+  tpa:
+    description: Envoie une demande de teleportation a un joueur
+    usage: /tpa <joueur>
+  tpaccept:
+    description: Accepte une demande de teleportation
+    usage: /tpaccept
+  tpdeny:
+    description: Refuse une demande de teleportation
+    usage: /tpdeny

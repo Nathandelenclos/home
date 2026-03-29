@@ -1,9 +1,11 @@
 package fr.nathandelenclos.home;
 
 import fr.nathandelenclos.home.application.HomeService;
+import fr.nathandelenclos.home.application.TpaService;
 import fr.nathandelenclos.home.application.WarpService;
 import fr.nathandelenclos.home.domain.TeleportPoint;
 import fr.nathandelenclos.home.infrastructure.BukkitLocationMapper;
+import fr.nathandelenclos.home.infrastructure.InMemoryTpaRequestRepository;
 import fr.nathandelenclos.home.infrastructure.YamlTeleportRepository;
 import fr.nathandelenclos.home.presentation.TeleportCommandHandler;
 import org.bukkit.command.PluginCommand;
@@ -22,7 +24,10 @@ public final class Home extends JavaPlugin {
             "setwarp",
             "warp",
             "delwarp",
-            "warps"
+            "warps",
+            "tpa",
+            "tpaccept",
+            "tpdeny"
     );
 
     private TeleportCommandHandler commandHandler;
@@ -35,8 +40,9 @@ public final class Home extends JavaPlugin {
         YamlTeleportRepository repository = new YamlTeleportRepository(getConfig(), this::saveConfig);
         HomeService homeService = new HomeService(repository);
         WarpService warpService = new WarpService(repository);
+        TpaService tpaService = new TpaService(new InMemoryTpaRequestRepository());
         BukkitLocationMapper locationMapper = new BukkitLocationMapper();
-        commandHandler = new TeleportCommandHandler(homeService, warpService, locationMapper);
+        commandHandler = new TeleportCommandHandler(homeService, warpService, tpaService, locationMapper);
 
         registerCommands();
         getLogger().info("Home plugin active: architecture hexagonale chargee.");

@@ -1,6 +1,7 @@
 package fr.nathandelenclos.home.presentation;
 
 import fr.nathandelenclos.home.application.HomeService;
+import fr.nathandelenclos.home.application.TpaService;
 import fr.nathandelenclos.home.application.WarpService;
 import fr.nathandelenclos.home.domain.TeleportName;
 import fr.nathandelenclos.home.domain.TeleportPoint;
@@ -43,12 +44,19 @@ public final class TeleportCommandHandler implements TabExecutor {
 
     private final HomeService homeService;
     private final WarpService warpService;
+    private final TpaService tpaService;
     private final BukkitLocationMapper locationMapper;
     private final Map<String, CommandAction> commandRouter;
 
-    public TeleportCommandHandler(HomeService homeService, WarpService warpService, BukkitLocationMapper locationMapper) {
+    public TeleportCommandHandler(
+            HomeService homeService,
+            WarpService warpService,
+            TpaService tpaService,
+            BukkitLocationMapper locationMapper
+    ) {
         this.homeService = homeService;
         this.warpService = warpService;
+        this.tpaService = tpaService;
         this.locationMapper = locationMapper;
         this.commandRouter = buildRouter();
     }
@@ -69,6 +77,9 @@ public final class TeleportCommandHandler implements TabExecutor {
         routes.put("warp", this::handleWarp);
         routes.put("delwarp", this::handleDelWarp);
         routes.put("warps", this::handleWarps);
+        routes.put("tpa", this::handleTpa);
+        routes.put("tpaccept", this::handleTpAccept);
+        routes.put("tpdeny", this::handleTpDeny);
         return Collections.unmodifiableMap(routes);
     }
 
@@ -209,6 +220,88 @@ public final class TeleportCommandHandler implements TabExecutor {
         }));
     }
 
+    private boolean handleTpa(CommandSender sender, String[] args) {
+        return withPlayerAndExactArgs(sender, args, 1, (requester, actualArgs) -> {
+            Player target = requester.getServer().getPlayerExact(actualArgs[0]);
+            if (target == null) {
+                requester.sendMessage(CommandMessages.playerNotFound(actualArgs[0]));
+                return true;
+            }
+
+            TpaService.RequestStatus status = tpaService.createRequest(
+                    requester.getUniqueId(),
+                    target.getUniqueId(),
+                    System.currentTimeMillis()
+            );
+            if (status == TpaService.RequestStatus.SELF_REQUEST) {
+                requester.sendMessage(CommandMessages.TPA_SELF);
+                return true;
+            }
+
+            requester.sendMessage(CommandMessages.tpaSent(target.getName()));
+            target.sendMessage(CommandMessages.tpaReceived(requester.getName()));
+            return true;
+        });
+    }
+
+    private boolean handleTpAccept(CommandSender sender, String[] args) {
+        return withPlayerAndExactArgs(sender, args, 0, (target, actualArgs) -> {
+            TpaService.DecisionResult result = tpaService.acceptRequest(target.getUniqueId(), System.currentTimeMillis());
+            if (result.status() == TpaService.DecisionStatus.NO_PENDING) {
+                target.sendMessage(CommandMessages.TPA_NO_PENDING);
+                return true;
+            }
+
+            if (result.status() == TpaService.DecisionStatus.EXPIRED) {
+                target.sendMessage(CommandMessages.TPA_EXPIRED);
+                Player requester = target.getServer().getPlayer(result.requesterId());
+                if (requester != null) {
+                    requester.sendMessage(CommandMessages.TPA_REQUEST_EXPIRED_FOR_REQUESTER);
+                }
+                return true;
+            }
+
+            Player requester = target.getServer().getPlayer(result.requesterId());
+            if (requester == null) {
+                target.sendMessage(CommandMessages.playerNotFound("demandeur"));
+                return true;
+            }
+
+            requester.teleport(target.getLocation());
+            target.sendMessage(CommandMessages.tpaAcceptedTarget(requester.getName()));
+            requester.sendMessage(CommandMessages.tpaAcceptedRequester(target.getName()));
+            return true;
+        });
+    }
+
+    private boolean handleTpDeny(CommandSender sender, String[] args) {
+        return withPlayerAndExactArgs(sender, args, 0, (target, actualArgs) -> {
+            TpaService.DecisionResult result = tpaService.denyRequest(target.getUniqueId(), System.currentTimeMillis());
+            if (result.status() == TpaService.DecisionStatus.NO_PENDING) {
+                target.sendMessage(CommandMessages.TPA_NO_PENDING);
+                return true;
+            }
+
+            if (result.status() == TpaService.DecisionStatus.EXPIRED) {
+                target.sendMessage(CommandMessages.TPA_EXPIRED);
+                Player requester = target.getServer().getPlayer(result.requesterId());
+                if (requester != null) {
+                    requester.sendMessage(CommandMessages.TPA_REQUEST_EXPIRED_FOR_REQUESTER);
+                }
+                return true;
+            }
+
+            Player requester = target.getServer().getPlayer(result.requesterId());
+            if (requester != null) {
+                requester.sendMessage(CommandMessages.tpaDeniedRequester(target.getName()));
+                target.sendMessage(CommandMessages.tpaDeniedTarget(requester.getName()));
+            } else {
+                target.sendMessage(CommandMessages.playerNotFound("demandeur"));
+            }
+            return true;
+        });
+    }
+
     private boolean executeTeleport(
             Player player,
             String rawName,
@@ -259,6 +352,13 @@ public final class TeleportCommandHandler implements TabExecutor {
             candidates = homeService.listHomes(player.getUniqueId());
         } else if ("warp".equals(commandName) || "delwarp".equals(commandName)) {
             candidates = warpService.listWarps();
+        } else if ("tpa".equals(commandName) && sender instanceof Player player) {
+            candidates = new ArrayList<>();
+            for (Player online : player.getServer().getOnlinePlayers()) {
+                if (!online.getUniqueId().equals(player.getUniqueId())) {
+                    candidates.add(online.getName());
+                }
+            }
         } else {
             return Collections.emptyList();
         }

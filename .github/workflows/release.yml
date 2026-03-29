@@ -49,7 +49,3 @@ jobs:
           files: ${{ steps.jar.outputs.jar_path }}
           generate_release_notes: true
           fail_on_unmatched_files: true
-        
-      - name: Trigger Dokploy Deploy
-        run: |
-          curl -X POST "https://cloud.delenclosnathan.fr/api/deploy/compose/ykKUvqw0pfoqfdknWQxQy"

@@ -55,4 +55,38 @@ final class CommandMessages {
     static final String WARPS_EMPTY = ChatColor.YELLOW + "Aucun warp disponible. Utilise /setwarp <nom>.";
     static final String HOME_WORLD_MISSING = ChatColor.RED + "Le monde de ce home n'existe plus.";
     static final String WARP_WORLD_MISSING = ChatColor.RED + "Le monde de ce warp n'existe plus.";
+
+    static String tpaSent(String targetName) {
+        return ChatColor.GREEN + "Demande de teleportation envoyee a " + targetName + ".";
+    }
+
+    static String tpaReceived(String requesterName) {
+        return ChatColor.AQUA + requesterName + ChatColor.WHITE + " souhaite se teleporter vers toi. Utilise /tpaccept.";
+    }
+
+    static final String TPA_NO_PENDING = ChatColor.YELLOW + "Aucune demande de teleportation en attente.";
+    static final String TPA_SELF = ChatColor.RED + "Tu ne peux pas t'envoyer une demande a toi-meme.";
+
+    static String playerNotFound(String playerName) {
+        return ChatColor.RED + "Joueur introuvable: " + playerName;
+    }
+
+    static String tpaAcceptedTarget(String requesterName) {
+        return ChatColor.GREEN + "Demande acceptee. " + requesterName + " a ete teleporte vers toi.";
+    }
+
+    static String tpaAcceptedRequester(String targetName) {
+        return ChatColor.GREEN + "Demande acceptee par " + targetName + ". Teleportation en cours.";
+    }
+
+    static String tpaDeniedTarget(String requesterName) {
+        return ChatColor.YELLOW + "Demande refusee pour " + requesterName + ".";
+    }
+
+    static String tpaDeniedRequester(String targetName) {
+        return ChatColor.RED + "Ta demande de teleportation vers " + targetName + " a ete refusee.";
+    }
+
+    static final String TPA_EXPIRED = ChatColor.YELLOW + "La demande de teleportation a expire.";
+    static final String TPA_REQUEST_EXPIRED_FOR_REQUESTER = ChatColor.YELLOW + "Ta demande de teleportation a expire.";
 }
