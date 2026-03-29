@@ -7,6 +7,7 @@ import fr.nathandelenclos.home.domain.TeleportPoint;
 import fr.nathandelenclos.home.infrastructure.BukkitLocationMapper;
 import fr.nathandelenclos.home.infrastructure.InMemoryTpaRequestRepository;
 import fr.nathandelenclos.home.infrastructure.YamlTeleportRepository;
+import fr.nathandelenclos.home.presentation.ChatFeatureHandler;
 import fr.nathandelenclos.home.presentation.TeleportCommandHandler;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.configuration.serialization.ConfigurationSerialization;
@@ -17,7 +18,7 @@ import java.util.logging.Level;
 
 public final class Home extends JavaPlugin {
 
-    private static final List<String> COMMAND_NAMES = List.of(
+    private static final List<String> TELEPORT_COMMAND_NAMES = List.of(
             "sethome",
             "home",
             "delhome",
@@ -30,7 +31,14 @@ public final class Home extends JavaPlugin {
             "tpdeny"
     );
 
+            private static final List<String> CHAT_COMMAND_NAMES = List.of(
+                "msg",
+                "r",
+                "react"
+            );
+
     private TeleportCommandHandler commandHandler;
+            private ChatFeatureHandler chatHandler;
 
     @Override
     public void onEnable() {
@@ -43,8 +51,11 @@ public final class Home extends JavaPlugin {
         TpaService tpaService = new TpaService(new InMemoryTpaRequestRepository());
         BukkitLocationMapper locationMapper = new BukkitLocationMapper();
         commandHandler = new TeleportCommandHandler(homeService, warpService, tpaService, locationMapper);
+        chatHandler = new ChatFeatureHandler(this);
 
-        registerCommands();
+        registerCommands(TELEPORT_COMMAND_NAMES, commandHandler);
+        registerCommands(CHAT_COMMAND_NAMES, chatHandler);
+        getServer().getPluginManager().registerEvents(chatHandler, this);
         getLogger().info("Home plugin active: architecture hexagonale chargee.");
     }
 
@@ -53,13 +64,13 @@ public final class Home extends JavaPlugin {
         saveConfig();
     }
 
-    private void registerCommands() {
-        for (String name : COMMAND_NAMES) {
-            registerCommand(name);
+    private void registerCommands(List<String> commandNames, org.bukkit.command.TabExecutor executor) {
+        for (String name : commandNames) {
+            registerCommand(name, executor);
         }
     }
 
-    private void registerCommand(String name) {
+    private void registerCommand(String name, org.bukkit.command.TabExecutor executor) {
         PluginCommand command = getCommand(name);
         if (command == null) {
             if (getLogger().isLoggable(Level.WARNING)) {
@@ -67,7 +78,7 @@ public final class Home extends JavaPlugin {
             }
             return;
         }
-        command.setExecutor(commandHandler);
-        command.setTabCompleter(commandHandler);
+        command.setExecutor(executor);
+        command.setTabCompleter(executor);
     }
 }

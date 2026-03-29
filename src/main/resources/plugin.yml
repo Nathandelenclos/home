@@ -34,3 +34,14 @@ commands:
   tpdeny:
     description: Refuse une demande de teleportation
     usage: /tpdeny
+  msg:
+    description: Envoie un message prive a un joueur
+    usage: /msg <joueur> <message>
+    aliases: [tell, w, whisper]
+  r:
+    description: Repond au dernier message prive
+    usage: /r <message>
+    aliases: [reply]
+  react:
+    description: Reagit rapidement a un joueur
+    usage: /react <gg|lol|+1|rip|fire> [joueur]
