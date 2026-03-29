@@ -45,3 +45,6 @@ commands:
   react:
     description: Reagit rapidement a un joueur
     usage: /react <gg|lol|+1|rip|fire> [joueur]
+  playercard:
+    description: Ouvre la fiche joueur avec actions contextuelles
+    usage: /playercard <joueur>

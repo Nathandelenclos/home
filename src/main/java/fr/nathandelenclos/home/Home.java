@@ -34,7 +34,8 @@ public final class Home extends JavaPlugin {
             private static final List<String> CHAT_COMMAND_NAMES = List.of(
                 "msg",
                 "r",
-                "react"
+                "react",
+                "playercard"
             );
 
     private TeleportCommandHandler commandHandler;
