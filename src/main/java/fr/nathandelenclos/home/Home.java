@@ -35,7 +35,9 @@ public final class Home extends JavaPlugin {
                 "msg",
                 "r",
                 "react",
-                "playercard"
+                "playercard",
+                "sharecoord",
+                "coordtpall"
             );
 
     private TeleportCommandHandler commandHandler;

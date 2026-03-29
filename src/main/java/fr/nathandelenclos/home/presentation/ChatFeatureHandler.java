@@ -97,6 +97,8 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
             case "r" -> handleReply(sender, args);
             case "react" -> handleReact(sender, args);
             case "playercard" -> handlePlayerCard(sender, args);
+            case "sharecoord" -> handleShareCoord(sender, args);
+            case "coordtpall" -> handleCoordTpAll(sender, args);
             default -> false;
         };
     }
@@ -118,7 +120,7 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
         }
 
         if ("playercard".equals(name) && args.length == 1) {
-            return filterByPrefix(onlinePlayerNamesExcluding(sender), args[0]);
+            return filterByPrefix(onlinePlayerNames(), args[0]);
         }
 
         return Collections.emptyList();
@@ -321,6 +323,77 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
         return true;
     }
 
+    private boolean handleShareCoord(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(org.bukkit.ChatColor.RED + "Commande reservee aux joueurs.");
+            return true;
+        }
+        if (args.length != 0) {
+            return false;
+        }
+
+        String world = player.getWorld().getName();
+        int x = player.getLocation().getBlockX();
+        int y = player.getLocation().getBlockY();
+        int z = player.getLocation().getBlockZ();
+
+        String clickCommand = "/coordtpall " + world + " " + x + " " + y + " " + z;
+        TextComponent line = new TextComponent(
+                org.bukkit.ChatColor.GOLD + "[Coord] "
+                        + org.bukkit.ChatColor.AQUA + player.getName()
+                        + org.bukkit.ChatColor.WHITE + " a partage: "
+                        + org.bukkit.ChatColor.YELLOW + world + " " + x + " " + y + " " + z
+                + org.bukkit.ChatColor.GREEN + " (cliquer pour te teleporter)"
+        );
+        line.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, clickCommand));
+        line.setHoverEvent(new HoverEvent(
+                HoverEvent.Action.SHOW_TEXT,
+            new ComponentBuilder("Clique pour te teleporter a ces coordonnees")
+                        .color(ChatColor.GRAY)
+                        .create()
+        ));
+
+        for (Player online : Bukkit.getOnlinePlayers()) {
+            online.spigot().sendMessage(line);
+        }
+        return true;
+    }
+
+    private boolean handleCoordTpAll(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            sender.sendMessage(org.bukkit.ChatColor.RED + "Commande reservee aux joueurs.");
+            return true;
+        }
+        if (args.length != 4) {
+            return false;
+        }
+
+        String worldName = args[0];
+        org.bukkit.World world = Bukkit.getWorld(worldName);
+        if (world == null) {
+            player.sendMessage(org.bukkit.ChatColor.RED + "Monde introuvable: " + worldName);
+            return true;
+        }
+
+        int x;
+        int y;
+        int z;
+        try {
+            x = Integer.parseInt(args[1]);
+            y = Integer.parseInt(args[2]);
+            z = Integer.parseInt(args[3]);
+        } catch (NumberFormatException ex) {
+            player.sendMessage(org.bukkit.ChatColor.RED + "Coordonnees invalides.");
+            return true;
+        }
+
+        org.bukkit.Location destination = new org.bukkit.Location(world, x + 0.5, y, z + 0.5);
+        player.teleport(destination);
+        player.sendMessage(org.bukkit.ChatColor.GREEN + "Teleportation vers "
+            + worldName + " " + x + " " + y + " " + z + ".");
+        return true;
+    }
+
     private void openPlayerCard(Player viewer, Player target) {
         Inventory inventory = Bukkit.createInventory(viewer, 27, PLAYER_CARD_PREFIX + target.getName());
 
@@ -457,6 +530,14 @@ public final class ChatFeatureHandler implements Listener, TabExecutor {
             if (self != null && self.equals(online.getUniqueId())) {
                 continue;
             }
+            names.add(online.getName());
+        }
+        return names;
+    }
+
+    private List<String> onlinePlayerNames() {
+        List<String> names = new ArrayList<>();
+        for (Player online : Bukkit.getOnlinePlayers()) {
             names.add(online.getName());
         }
         return names;

@@ -48,3 +48,9 @@ commands:
   playercard:
     description: Ouvre la fiche joueur avec actions contextuelles
     usage: /playercard <joueur>
+  sharecoord:
+    description: Partage tes coordonnees dans le chat avec teleportation cliquable
+    usage: /sharecoord
+  coordtpall:
+    description: Commande interne pour teleporter le joueur cliqueur aux coordonnees partagees
+    usage: /coordtpall <monde> <x> <y> <z>
